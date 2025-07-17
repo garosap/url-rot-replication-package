@@ -1,4 +1,4 @@
-# Research Paper Replication Package
+# Replication Package for: URL Rot in Software Engineering Scholarly Works
 
 ## Overview
 
