@@ -70,7 +70,16 @@ pip3 install -r requirements.txt
 ```
 
 #### Grobid Installation
-Foloow the instructions on the [Grobid website](https://grobid.readthedocs.io/en/latest/Install-Grobid/) to install Grobid.
+If you wish to replicate the data gathering process, you will need to install Grobid, a machine learning library for extracting and parsing scholarly documents.
+
+For this, JAVA is required. You can install Java using the following command:
+
+```
+sudo apt install openjdk-17-jdk
+```
+
+
+Follow the instructions on the [Grobid website](https://grobid.readthedocs.io/en/latest/Install-Grobid/) to install Grobid.
 Make sure Grobid is stored in a folder named `grobid` in the `data-gathering` directory of the replication package.
 
 ## Data Gathering
