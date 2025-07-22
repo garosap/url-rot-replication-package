@@ -21,8 +21,9 @@ After ensuring PostgreSQL is installed on your system, you can set up the databa
 3. Start the PostgreSQL command line interface: `psql`
 4. Create a new database for the project, e.g., `link_rot_db`: `CREATE DATABASE link_rot_db;`
 5. Exit the PostgreSQL interface: `\q`
-6. Navigate to the directory `database-setup`, which contains the `link_rot_db_schema.sql` file.
-7. Import the schema into your newly created database using:
+6. Exit the PostgreSQL user session if you switched to it: `exit`
+7. Navigate to the directory `database-setup`, which contains the `link_rot_db_schema.sql` file.
+8. Import the schema into your newly created database using:
    `
    psql -d link_rot_db -f link_rot_db_schema.sql
    `
@@ -31,16 +32,14 @@ After ensuring PostgreSQL is installed on your system, you can set up the databa
 
 #### Using a Database Dump
 
-If you prefer to start with a pre-populated database, you can use the `link_rot_db.sql` file, which contains a database dump, including both the schema and sample data. To import this dump, follow these instructions:
+If you prefer to start with a pre-populated database, you can use the `link_rot_db_data.sql` file, which contains a database dump, including the data. To import this dump, follow these instructions (after creating the database and schema as described above):
 
-1. Ensure the `link_rot_db` database is created as mentioned above.
-2. Navigate to the directory `database-setup`, which contains the `link_rot_db.sql` file.
+2. Navigate to the directory `database-setup`, which contains the `link_rot_db_data.sql` file.
 3. Import the database dump using:
-   `
-   psql -d link_rot_db -f link_rot_db.sql
-   `
-
-   This will populate your database with the schema and data contained in the SQL dump file.
+   ```
+   psql -d link_rot_db -f link_rot_db_data.sql
+   ```
+   This will populate your database with the data contained in the SQL dump file.
 
 #### Database Configuration
 
