@@ -42,3 +42,5 @@ with open("sampled_active_urls.txt", "w") as file:
         file.write(url + "\n")
 
 print("url_sample active URLs have been written to sampled_active_urls.txt.")
+
+
