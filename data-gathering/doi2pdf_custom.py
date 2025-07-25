@@ -51,6 +51,7 @@ def doi2pdf(
     try:
         for sci_hub_url in sci_hub_urls:
             try:
+                doi, title, official_pdf_url = get_paper_metadata(doi, name, url)
                 sci_hub_pdf_url = retrieve_scihub(doi, sci_hub_url)
                 pdf_content = get_pdf_from_url(sci_hub_pdf_url)
             except Exception as e:

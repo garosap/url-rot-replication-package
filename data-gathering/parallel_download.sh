@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Define an array of venues
-# venues=("ASEJ" "ESE" "IJSEKE" "ISSE" "IST" "JSS" "REJ" "NOTES" "SMR" "SOSYM" "SPE" "SQJ" "STVR" "SW" "TOSEM" "TSE" "ASE" "ESEM" "FASE" "FSE" "GPCE" "ICPC" "ICSE" "ICSM" "ICSME" "ICST" "ISSTA" "MODELS" "MSR" "RE" "SANER" "SCAM" "SSBSE" "WCRE")
-venues=("ASE")
+venues=("ASEJ" "ESE" "IJSEKE" "ISSE" "IST" "JSS" "REJ" "NOTES" "SMR" "SOSYM" "SPE" "SQJ" "STVR" "SW" "TOSEM" "TSE" "ASE" "ESEM" "FASE" "FSE" "GPCE" "ICPC" "ICSE" "ICSM" "ICSME" "ICST" "ISSTA" "MODELS" "MSR" "RE" "SANER" "SCAM" "SSBSE" "WCRE")
+
 # Create logs directory if it does not exist
 mkdir -p ./logs/pdf_downloads
 
