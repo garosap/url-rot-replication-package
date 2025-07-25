@@ -1,27 +1,30 @@
+import os
+import shutil
 import psycopg2
-import requests
+from curl_cffi import requests as curl_cffi_req
 from tenacity import retry, stop_after_attempt, wait_fixed
+import requests as python_req
 import re
+import sys
 import subprocess
 import time
 from urllib.parse import urlparse
-import sys
 
 sys.path.append('../')
 from globalFunctions import *
 
-
+params = config(filename='../database-setup/database.ini', section='postgresql')
 # check if url is valid
 def is_valid_url(url):
     try:
+        # Adding http just for the validity check
+        if url.startswith("www."):
+            url = "http://"+ url
+
         result = urlparse(url)
         return all([result.scheme, result.netloc])
     except ValueError:
         return False
-
-#get database parameter
-params = config(filename='../database-setup/database.ini', section='postgresql')
-
 
 
 
@@ -35,12 +38,18 @@ def get_network_error(url):
     else:
         return None
     
+    
 
 
-@retry(reraise=True, stop=stop_after_attempt(3), wait=wait_fixed(5))
-def fetch_with_retry(url):
-    response = requests.get(url, timeout=10)
+@retry(reraise=True, stop=stop_after_attempt(3), wait=wait_fixed(45))
+def fetch_with_retry(url, py_req):
+    if py_req == False:
+        response = curl_cffi_req.get(url, timeout=10,  impersonate="chrome110", allow_redirects=True) 
+    else:
+        response = python_req.get(url, timeout=10, allow_redirects=True) 
+
     return response
+
 
 
 try:
@@ -48,9 +57,22 @@ try:
 
     connection = psycopg2.connect(**params)
     cursor = connection.cursor()
-
     cursor.execute("SELECT * FROM urls WHERE active IS NULL AND status_code IS NULL AND network_error IS NULL")
-
+    
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+    # cursor.execute("""
+        # SELECT DISTINCT u.*
+        # FROM urls u
+        # JOIN paper_urls pu ON u.id = pu.url_id
+        # JOIN papers p     ON pu.paper_id = p.id
+        # WHERE p.year = 2024
+        # AND u.active IS NULL
+        # AND u.status_code IS NULL
+        # AND u.network_error IS NULL;
+    # """)
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
     urls = cursor.fetchall()
     
     cnt = 1
@@ -58,9 +80,12 @@ try:
     # total urls
     totalUrls = len(urls)
 
+
+
     for url in urls:
         print(f"Checking url {cnt}/{totalUrls}")
         print("url", url)
+        
         cnt += 1
         # print("url", url)
         # fetch the url to get error code
@@ -75,30 +100,41 @@ try:
         if re.search(r'\.zip$', url) or re.search(r'\.tar$', url) or re.search(r'\.gz$', url) or re.search(r'\.bz2$', url) or re.search(r'\.xz$', url) or re.search(r'\.7z$', url) or re.search(r'\.rar$', url):
             print(f"URL is a compressed file: {url}")
             continue
-
+        
         # Only check urls that have active | status_code | network_error = None
         cursor.execute("SELECT * FROM urls WHERE url = %s AND active IS NULL AND status_code IS NULL AND network_error IS NULL", (url,))
         urlDB = cursor.fetchone()
         if not urlDB:
+            print(urlDB)
             continue
+        
+        
+        time.sleep(30)
+        
         try:
-            # response = requests.get(url, timeout=10,)
+            # response = curl_cffi_req.get(url, timeout=10,)
             try:
-                response = fetch_with_retry(url)
+                response = fetch_with_retry(url, py_req=False)
             except Exception as e:
                 print("Error fetching url: ", e)
-                # throw requests.exceptions.RequestException
-                raise requests.exceptions.RequestException 
+                raise python_req.exceptions.RequestException 
                 
                 # continue
+            if response.status_code != 200:
+                try:    
+                    response = fetch_with_retry(url, py_req=True)
+                except Exception as e:
+                    print("Error fetching url: ", e)
+                    raise python_req.exceptions.RequestException 
 
             print(url, response.status_code)
+        
             active = response.status_code == 200
             # update the url table with the error code
             cursor.execute("UPDATE urls SET active = %s, status_code = %s, network_error = %s WHERE url = %s", (active, response.status_code, None, url))
             connection.commit()
 
-        except requests.exceptions.RequestException as e:
+        except python_req.exceptions.RequestException as e:
             errno = get_network_error(url)
             print("errno", errno)  
             
@@ -116,7 +152,6 @@ try:
         
         
 except (Exception, psycopg2.DatabaseError) as error:
-    
     print("ERROR:", error)
 finally:
     print("Total time taken (s): ", time.time() - timeStart)
