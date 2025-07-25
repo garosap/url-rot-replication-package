@@ -1,100 +1,129 @@
 import pandas as pd
+import numpy as np
 import psycopg2
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, r2_score
+from scipy import stats
 from urllib.parse import urlparse
 
-from visualization_function import visualize_data
 
 import sys
 sys.path.append("..")
 from globalFunctions import *
 
-params = config("../database-setup/database.ini", "postgresql")
+# ─── 1. CONNECT & FETCH ─────────────────────────────────────────────────────────
+params = config(filename='../database-setup/database.ini', section='postgresql')
 
-# Connect to the database
 conn = psycopg2.connect(**params)
 cur = conn.cursor()
 
-def countPathElements(url):
-    try:
-        # Parse the URL and split the path into elements
-        path_elements = urlparse(url).path.split('/')
-        
-        # Subtract 1 to account for the initial empty string before the first '/'
-        count = len(path_elements) - 1
-        
-        return count
-    except Exception as e:
-        # Return None (which is equivalent to NULL in databases) on error
-        return None
-
-
-
-# Extracting data from the database using cursor and pandas
 def fetch_data(query, cur):
     cur.execute(query)
-    colnames = [desc[0] for desc in cur.description]
+    cols = [d[0] for d in cur.description]
     data = cur.fetchall()
-    return pd.DataFrame(data, columns=colnames)
+    return pd.DataFrame(data, columns=cols)
 
-# Fetching URLs and their active statuses
 urls_df = fetch_data("SELECT * FROM urls", cur)
-
-# Close the cursor and connection
 cur.close()
 conn.close()
 
-# Calculate URL length
-urls_df['url_length'] = urls_df['url'].str.len()
+# ─── 2. DERIVE FEATURES ──────────────────────────────────────────────────────────
 
-# Calculate the number of path elements in the URL
-urls_df['num_path_elements'] = urls_df['url'].apply(lambda x: countPathElements(x))
+def countPathElements(url):
+    try:
+        parts = urlparse(url).path.split('/')
+        return len(parts) - 1
+    except:
+        return None
 
-# Entries with null value in the active column are considered as inactive
-urls_df['active'] = urls_df['active'].fillna(False)
-urls_df['is_active'] = urls_df['active'].astype(int)
+urls_df['url_length']        = urls_df['url'].str.len()
+urls_df['num_path_elements'] = urls_df['url'].apply(countPathElements)
+urls_df['active']            = urls_df['active'].fillna(False)
+urls_df['is_active']         = urls_df['active'].astype(int)
 
-# Merge the same length URLs and calculate the success rate
-urls_length_df = urls_df.groupby("url_length").agg({"is_active": "mean"}).reset_index()
+# ─── 3. REGRESSION A: URL LENGTH vs. SUCCESS RATE ──────────────────────────────
 
+# 3.1 Aggregate
+length_df = (
+    urls_df
+      .groupby("url_length")
+      .agg({"is_active": "mean"})
+      .reset_index()
+)
 
-# Linear Regression for URL Length vs. Success Rate
-X_length = urls_length_df[['url_length']]
-y = urls_length_df['is_active']
+X_len = length_df[['url_length']]
+y_len = length_df['is_active']
 
-model_length = LinearRegression()
-model_length.fit(X_length, y)
+# 3.2 Fit model
+model_len = LinearRegression().fit(X_len, y_len)
+y_pred_len = model_len.predict(X_len)
 
-y_pred_length = model_length.predict(X_length)
+# 3.4 Statistics
+def infer_stats(X, y, model):
+    n = X.shape[0]
+    p = X.shape[1] + 1
+    df = n - p
 
-# Visualize the data
-visualize_data(urls_length_df, X_length, y_pred_length, 'url_length', 'is_active', 'URL Length vs. Success Rate', 'url_length_vs_success_rate')
+    X_design = np.hstack([np.ones((n,1)), X.values])
+    residuals = y.values.flatten() - model.predict(X)
+    RSS = np.sum(residuals**2)
+    sigma2 = RSS / df
 
-# Results for URL Length vs. Success Rate
-print("Regression: URL Length vs. Success Rate")
-print(f"Coefficient: {model_length.coef_[0]}")
-print("\n")
+    cov_mat = sigma2 * np.linalg.inv(X_design.T @ X_design)
+    se = np.sqrt(np.diag(cov_mat))
 
-urls_df = urls_df.dropna(subset=["num_path_elements"])
+    params_ = np.r_[model.intercept_, model.coef_.flatten()]
+    t_stats = params_ / se
+    p_vals = 2 * (1 - stats.t.cdf(np.abs(t_stats), df))
 
-# Merge the same length URLs and calculate the success rate
-urls_df['num_path_elements'] = urls_df['num_path_elements'].astype(int)
-urls_df = urls_df.groupby("num_path_elements").agg({"is_active": "mean"}).reset_index()
+    alpha = 0.05
+    t_crit = stats.t.ppf(1 - alpha/2, df)
+    ci_lower = params_ - t_crit * se
+    ci_upper = params_ + t_crit * se
 
+    r2     = model.score(X, y)
+    adj_r2 = 1 - (1 - r2)*(n - 1)/(n - p)
 
-# Linear Regression for Number of Path Elements vs. Success Rate
-X_path = urls_df[['num_path_elements']]
-y = urls_df['is_active']
+    df_report = pd.DataFrame({
+        'parameter':    ['intercept'] + X.columns.tolist(),
+        'coef':         params_,
+        'std_err':      se,
+        't_stat':       t_stats,
+        'p_value':      p_vals,
+        'ci_lower_95':  ci_lower,
+        'ci_upper_95':  ci_upper
+    })
+    return r2, adj_r2, df_report
 
-model_path = LinearRegression()
-model_path.fit(X_path, y)
+r2_len, adj_r2_len, report_len = infer_stats(X_len, y_len, model_len)
 
+print("Regression A: URL Length vs. Success Rate")
+print(f"R² = {r2_len:.3f}, adjusted R² = {adj_r2_len:.3f}\n")
+print(report_len.to_markdown(index=False))
+print(f"\nSlope (β₁) = {model_len.coef_[0]:.6f}\n\n")
+
+# ─── 4. REGRESSION B: PATH ELEMENTS vs. SUCCESS RATE ────────────────────────────
+
+# 4.1 Drop nulls & aggregate
+path_df = urls_df.dropna(subset=['num_path_elements']).copy()
+path_df['num_path_elements'] = path_df['num_path_elements'].astype(int)
+path_df = (
+    path_df
+      .groupby("num_path_elements")
+      .agg({"is_active": "mean"})
+      .reset_index()
+)
+
+X_path = path_df[['num_path_elements']]
+y_path = path_df['is_active']
+
+# 4.2 Fit model
+model_path = LinearRegression().fit(X_path, y_path)
 y_pred_path = model_path.predict(X_path)
 
-# Visualize the data
-visualize_data(urls_df, X_path, y_pred_path, 'num_path_elements', 'is_active', 'Number of Path Elements vs. Success Rate', 'num_path_elements_vs_success_rate')
+# 4.4 Statistics
+r2_path, adj_r2_path, report_path = infer_stats(X_path, y_path, model_path)
 
-# Results for Number of Path Elements vs. Success Rate
-print("Regression: Number of Path Elements vs. Success Rate")
-print(f"Coefficient: {model_path.coef_[0]}")
+print("Regression B: Number of Path Elements vs. Success Rate")
+print(f"R² = {r2_path:.3f}, adjusted R² = {adj_r2_path:.3f}\n")
+print(report_path.to_markdown(index=False))
+print(f"\nSlope (β₁) = {model_path.coef_[0]:.6f}")
