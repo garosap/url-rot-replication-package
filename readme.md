@@ -96,9 +96,10 @@ This step involves downloading the DBLP dataset and extracting metadata relevant
    Navigate into the `data-gathering/dblp` directory.
    Use `curl` commands in your terminal to download the `dblp.xml.gz` and `dblp.dtd.gz` files. These files contain the complete DBLP dataset and the document type definition necessary for parsing. Run the following commands:
 
+<!-- TODO: VERIFY VERSION -->
    - Download `dblp.xml.gz`:
      ```
-     curl -o dblp.xml.gz https://dblp.org/xml/release/dblp-2024-02-01.xml.gz
+     curl -o dblp.xml.gz https://dblp.org/xml/release/dblp-2025-02-01.xml.gzI.  
      ```
    - Download `dblp.dtd.gz`:
      ```
