@@ -18,19 +18,7 @@ sys.path.append('../')
 from globalFunctions import *
 params = config(filename='../database-setup/database.ini', section='postgresql')
 
-
 sns.set_style("white")
-
-# Load URLs from database
-params = {
-    # "dbname": "general_index_se",
-    "dbname": "backup",
-    "user": "agaros",
-    "password": "apo2000grs",
-    "host": "localhost",
-    "port": 5432
-}
-
 
 
 # Turn on grid by default...
