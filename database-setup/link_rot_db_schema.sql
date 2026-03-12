@@ -80,7 +80,9 @@ CREATE TABLE agaros.urls (
     active boolean,
     status_code integer DEFAULT 0,
     network_error integer,
-    section character varying(500)
+    section character varying(500),
+    wayback_exists boolean,
+    wayback_soft_404 boolean
 );
 
 

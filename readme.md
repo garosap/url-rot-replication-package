@@ -203,6 +203,27 @@ Automated checks on URLs are performed using the `automatic-url-check/check_urls
 
 This process ensures URLs in scholarly documents are accurately tracked for their availability status.
 
+### Wayback Machine Check
+
+For URLs marked as inactive (`active = false`), a secondary check is performed against the [Wayback Machine](https://web.archive.org) to determine whether a historical snapshot exists and whether that snapshot is a soft 404. This is done using the `automatic-url-check/check_wayback.py` script, which uses the Wayback CDX API exclusively.
+
+The script populates two columns in the `urls` table:
+- `wayback_exists`: `true` if a successful snapshot (HTTP 200/301/302) was found in the CDX index
+- `wayback_soft_404`: `true` if the snapshot's HTML page title matches known soft-404 patterns (e.g. "Page Not Found", "404", etc.)
+
+#### Steps
+1. Ensure the automatic URL crawl (`check_urls.py`) has completed, so inactive URLs are identified.
+2. Go to the `automatic-url-check` directory.
+3. Ensure the `database.ini` file is correctly configured.
+4. Run the script:
+   ```bash
+   python3 check_wayback.py
+   ```
+5. Optionally, pass `--verbose` for detailed per-URL logs, or `--url <URL>` to check a single URL for debugging:
+   ```bash
+   python3 check_wayback.py --url https://example.com --verbose
+   ```
+
 ### Manual URL Checks
 
 In order to replicate the Manual URL check that we did on a sample of active URLs, you can use the `manual-url-check` directory. This directory contains a `generate_random_sample.py` that generates a (seeded) random sample of URLs from the database and stores it in a TXT file. 
