@@ -224,6 +224,40 @@ The script populates two columns in the `urls` table:
    python3 check_wayback.py --url https://example.com --verbose
    ```
 
+### URL Content Classification
+
+Each URL is assigned a content category using URL-only heuristics (no crawling required). This is done using the `automatic-url-check/classify_urls.py` script, which populates the `content_category` column in the `urls` table.
+
+The six categories, applied in order (first match wins), are:
+
+| Category | Description |
+|---|---|
+| `PAPER` | Academic papers — publisher/preprint hosts, DOI links, paper PDFs |
+| `DATASET` | Explicit datasets — Kaggle, UCI, Hugging Face datasets, Dataverse, etc. |
+| `ARTIFACT` | Replication packages / supplementary research bundles (e.g. Zenodo records, OSF downloads) |
+| `SOFTWARE` | Code — GitHub/GitLab/Bitbucket, package registries (PyPI, npm, CRAN), VCS hosts |
+| `HOMEPAGE` | Project/tool landing pages, academic project sites, GitHub Pages |
+| `DOCUMENTATION` | Docs, API references, tutorials, specs, slides |
+
+URLs that do not match any category remain `NULL` (reported as `OTHER` in the paper).
+
+#### Steps
+1. Go to the `automatic-url-check` directory.
+2. Ensure the `database.ini` file is correctly configured.
+3. Run the script (all steps by default):
+   ```bash
+   python3 classify_urls.py
+   ```
+4. Optionally, run a single classification step (1–6) or debug a specific URL:
+   ```bash
+   python3 classify_urls.py --step 4
+   python3 classify_urls.py --url https://github.com/example/repo
+   ```
+5. To preview changes without writing to the database, set `DRY_RUN=1`:
+   ```bash
+   DRY_RUN=1 python3 classify_urls.py
+   ```
+
 ### Manual URL Checks
 
 In order to replicate the Manual URL check that we did on a sample of active URLs, you can use the `manual-url-check` directory. This directory contains a `generate_random_sample.py` that generates a (seeded) random sample of URLs from the database and stores it in a TXT file. 
