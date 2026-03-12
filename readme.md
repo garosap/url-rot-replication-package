@@ -306,11 +306,22 @@ All results are printed to the console.
    ```
 
 ### Regression Analysis
-2. Run the following commands to execute the regression analysis scripts:
-```
-python3 core_ranking_regression.py
-python3 journal_impact_factor_regression.py
-python3 url_metrics_regression.py
-```
-3. The results of the regression analyses will be printed to the console.
+
+The `regression-analysis/combined_regression.py` script runs three linear regression models in a single execution:
+
+| Model | Predictors | Response | Unit of analysis |
+|---|---|---|---|
+| **Model 1** | `url_length`, `num_path_elements`, `paper_age`, `is_https`, `venue_type`, `section_grp` | `is_active` | one row per URL citation |
+| **Model 2** | CORE ranking (A* / A / B / C → numeric ordinal) | mean URL success rate | per conference venue |
+| **Model 3** | Journal impact factor | mean URL success rate | per journal venue |
+
+Model 1 also includes a **VIF (Variance Inflation Factor)** diagnostic to check for multicollinearity among predictors. Models 2 and 3 are mutually exclusive (conferences vs. journals). All models report R², adjusted R², coefficients, standard errors, t-statistics, p-values, and 95% confidence intervals.
+
+#### Instructions
+1. Navigate to the `regression-analysis` directory.
+2. Run:
+   ```bash
+   python3 combined_regression.py
+   ```
+3. All results are printed to the console.
 
