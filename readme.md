@@ -275,11 +275,37 @@ In order to replicate the Manual URL check that we did on a sample of active URL
 #### Outputs
 The script generates visualizations that are saved in the `visualizations/visualization-outputs/` directory in pdf format. In the same folder, you will also find a `results.txt` file that contains the results of the analyses in numerical format.
 
-### Regression Analysis
+### Persistent URL & URL Shortener Analysis
+
+The `visualizations/persistent_url_analysis.py` script analyses two special URL categories across the full dataset:
+
+- **URL shorteners** (e.g. bit.ly, tinyurl.com, t.co) — count, % of total, and activity rate, with a per-domain breakdown
+- **Persistent URLs** — URLs that use a long-term resolution mechanism, broken down into nine categories:
+
+| Category | Examples |
+|---|---|
+| DOI resolver | `doi.org`, `dx.doi.org` |
+| Handle System | `hdl.handle.net` |
+| ARK | `n2t.net`, `ark.cdlib.org`, `/ark:/` paths |
+| PURL | `purl.org` |
+| w3id | `w3id.org` |
+| Perma.cc | `perma.cc` |
+| Internet Archive | `web.archive.org/web/…` |
+| Zenodo record | `zenodo.org/record/…` |
+| Software Heritage | `archive.softwareheritage.org/swh:…` |
+
+It also reports the percentage of DOI URLs per publication year.
+
+All results are printed to the console.
 
 #### Instructions
+1. Navigate to the `visualizations` directory.
+2. Run:
+   ```bash
+   python3 persistent_url_analysis.py
+   ```
 
-1. Navigate to the `regression-analysis` directory.
+### Regression Analysis
 2. Run the following commands to execute the regression analysis scripts:
 ```
 python3 core_ranking_regression.py
