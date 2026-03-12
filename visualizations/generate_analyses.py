@@ -1252,9 +1252,256 @@ def generate_url_types_evolution_per_year(cursor):
     fig.savefig('results/urlTypesEvolutionPerYear.pdf', dpi=300)
     plt.show()
 
-    
+
+def calculate_half_life_by_url_type(cursor, min_total_per_year=50):
+    """
+    Computes half-life per publication year separately for:
+      - All URLs
+      - VCS URLs
+      - Archival URLs
+      - Other URLs (not VCS and not Archival)
+
+    Uses same formula as calculate_half_life():
+      half_life = ((age) * ln(0.5)) / (ln(active) - ln(total))
+
+    Returns a dict with:
+      {
+        "all":    {"mean": ..., "series": [(year, hl), ...], "n_years": ...},
+        "vcs":    {...},
+        "arch":   {...},
+        "other":  {...},
+      }
+    """
+
+    cursor.execute("SELECT DISTINCT year FROM papers;")
+    years = sorted([y[0] for y in cursor.fetchall()])
+
+    current_year = datetime.datetime.now().year
+
+    def half_life_series_for_filter(filter_fn):
+        series = []
+        for y in years:
+            age = current_year - y
+            if age <= 0:
+                continue
+
+            cursor.execute("""
+                SELECT DISTINCT u.id, u.url, u.active
+                FROM papers p
+                JOIN paper_urls pu ON pu.paper_id = p.id
+                JOIN urls u ON u.id = pu.url_id
+                WHERE p.year = %s
+                  AND u.active IS NOT NULL;
+            """, (y,))
+            rows = cursor.fetchall()
+
+            rows = [r for r in rows if filter_fn(r[1])]
+
+            total = len({r[0] for r in rows})
+            if total < min_total_per_year:
+                continue
+
+            active = sum(1 for _, _, a in rows if a is True)
+            if active == 0:
+                active = 1e-8  # avoid log(0)
+
+            hl = (age * math.log(0.5)) / (math.log(active) - math.log(total))
+            series.append((y, hl, total, active))
+
+        return series
+
+    filt_all   = lambda url: True
+    filt_vcs   = lambda url: is_version_control_url(url)
+    filt_arch  = lambda url: is_archival_url(url)
+    filt_other = lambda url: (not is_version_control_url(url)) and (not is_archival_url(url))
+
+    series_all   = half_life_series_for_filter(filt_all)
+    series_vcs   = half_life_series_for_filter(filt_vcs)
+    series_arch  = half_life_series_for_filter(filt_arch)
+    series_other = half_life_series_for_filter(filt_other)
+
+    def mean_of(series):
+        vals = [x[1] for x in series]
+        return statistics.mean(vals) if vals else float("nan")
+
+    results = {
+        "all":   {"mean": mean_of(series_all),   "series": [(y, hl) for y, hl, _, _ in series_all],   "n_years": len(series_all)},
+        "vcs":   {"mean": mean_of(series_vcs),   "series": [(y, hl) for y, hl, _, _ in series_vcs],   "n_years": len(series_vcs)},
+        "arch":  {"mean": mean_of(series_arch),  "series": [(y, hl) for y, hl, _, _ in series_arch],  "n_years": len(series_arch)},
+        "other": {"mean": mean_of(series_other), "series": [(y, hl) for y, hl, _, _ in series_other], "n_years": len(series_other)},
+    }
+
+    with open('results/results.txt', 'a') as f:
+        f.write("\n=== Half-life by URL type (min_total_per_year=%d) ===\n" % min_total_per_year)
+        for k, label in [("all", "All"), ("other", "Other"), ("vcs", "Version Control"), ("arch", "Archival")]:
+            f.write(f"{label}: mean half-life={results[k]['mean']:.2f} years, years_used={results[k]['n_years']}\n")
+        f.write("\n")
+
+    fig, ax = plt.subplots(figsize=(14, 9))
+
+    def plot_series(key, marker, label):
+        s = results[key]["series"]
+        if not s:
+            return
+        xs = [p[0] for p in s]
+        ys = [p[1] for p in s]
+        ax.plot(xs, ys, marker=marker, linewidth=2, label=f"{label} (mean={results[key]['mean']:.2f}y)")
+
+    plot_series("other", "o", "Other")
+    plot_series("vcs",   "s", "VCS")
+    plot_series("arch",  "^", "Archival")
+    plot_series("all",   "x", "All")
+
+    ax.set_xlabel("Publication year", fontsize=16)
+    ax.set_ylabel("Estimated half-life (years)", fontsize=16)
+    ax.set_title("Half-life by URL hosting purpose (per publication year)", fontsize=16)
+    ax.tick_params(axis='both', labelsize=14)
+    ax.legend(fontsize=12)
+
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+
+    plt.tight_layout()
+    fig.savefig('results/half_lives_by_type.pdf', dpi=300)
+    plt.show()
+
+    return results
 
 
+def generate_active_percentage_per_content_category(cursor, min_total_per_category=50, out_path="results/results.txt"):
+    """
+    Calculates active% per content_category (from urls.content_category).
+
+    - Only uses rows where urls.active IS NOT NULL.
+    - Filters out categories with < min_total_per_category URLs.
+    - Writes a summary to out_path (append mode) and returns a list of dicts.
+    """
+
+    cursor.execute("""
+        SELECT
+            content_category,
+            COUNT(*) AS total,
+            SUM(CASE WHEN active = TRUE  THEN 1 ELSE 0 END) AS active_cnt,
+            SUM(CASE WHEN active = FALSE THEN 1 ELSE 0 END) AS inactive_cnt
+        FROM urls
+        WHERE active IS NOT NULL
+        GROUP BY content_category
+        ORDER BY total DESC;
+    """)
+    rows = cursor.fetchall()
+
+    results = []
+    for content_category, total, active_cnt, inactive_cnt in rows:
+        label = content_category if content_category is not None else "UNCLASSIFIED"
+
+        if total < min_total_per_category:
+            continue
+
+        active_pct = (active_cnt / total) * 100 if total else 0.0
+        results.append({
+            "content_category": label,
+            "total": int(total),
+            "active": int(active_cnt),
+            "inactive": int(inactive_cnt),
+            "active_pct": float(active_pct),
+        })
+
+    with open(out_path, "a") as f:
+        f.write(f"\n=== Active % per content_category (min_total_per_category={min_total_per_category}) ===\n")
+        f.write("content_category: active% (active/total)\n")
+        for r in results:
+            f.write(f"{r['content_category']}: {r['active_pct']:.2f}% ({r['active']}/{r['total']})\n")
+        f.write("\n")
+
+    return results
+
+
+def generate_doi_usage_per_year(
+    cursor,
+    min_total_per_year=50,
+    out_path="results/results.txt",
+    csv_path="results/doi_usage_per_year.csv",
+    fig_path="results/doi_usage_per_year.pdf",
+    show=True,
+):
+    """
+    Per publication year (years with >= min_total_per_year URLs):
+      - DOI URL percentage of total URLs that year
+    """
+
+    doi_pattern = r"10\.\d{4,9}/[-._;()/:A-Z0-9]+"
+    doi_url_regex = rf"(?:https?://(?:dx\.)?doi\.org/)?{doi_pattern}"
+
+    cursor.execute(
+        """
+        SELECT
+            p.year AS year,
+            COUNT(DISTINCT u.id) AS total_urls,
+            COUNT(DISTINCT CASE WHEN u.url ~* %s THEN u.id END) AS doi_urls
+        FROM papers p
+        JOIN paper_urls pu ON pu.paper_id = p.id
+        JOIN urls u ON u.id = pu.url_id
+        WHERE u.active IS NOT NULL
+        GROUP BY p.year
+        ORDER BY p.year;
+        """,
+        (doi_url_regex,),
+    )
+    rows = cursor.fetchall()
+
+    records = []
+    for year, total_urls, doi_urls in rows:
+        if not total_urls or total_urls < min_total_per_year:
+            continue
+
+        doi_pct = (doi_urls / total_urls) * 100.0
+        records.append(
+            {
+                "year": int(year),
+                "total_urls": int(total_urls),
+                "doi_urls": int(doi_urls),
+                "doi_pct": float(doi_pct),
+            }
+        )
+
+    df = pd.DataFrame(records).sort_values("year").reset_index(drop=True)
+    df.to_csv(csv_path, index=False)
+
+    with open(out_path, "a") as f:
+        f.write(
+            f"\n=== DOI URL usage per year (min_total_per_year={min_total_per_year}) ===\n"
+        )
+        for _, r in df.iterrows():
+            f.write(f"{r['year']}: {r['doi_pct']:.2f}% ({r['doi_urls']}/{r['total_urls']})\n")
+        f.write("\n")
+        f.write(f"DOI regex used (SQL ~*): {doi_url_regex}\n\n")
+
+    fig, ax = plt.subplots(figsize=(20, 10))
+
+    years = df["year"].tolist()
+    doi_pct_vals = df["doi_pct"].tolist()
+
+    ax.bar(years, doi_pct_vals, color="#7fcdbb", edgecolor="black")
+
+    ax.set_xticks(years)
+    ax.set_xticklabels(years, rotation=45, fontsize=25)
+    ax.set_ylabel("DOI URL Percentage (%)", fontsize=30)
+    ax.set_ylim(0, 100)
+    ax.yaxis.set_major_locator(MultipleLocator(20))
+    ax.tick_params(axis="y", labelsize=25)
+
+    ax.spines["right"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+
+    plt.tight_layout()
+    fig.savefig(fig_path, dpi=300)
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return df
 
 
 
@@ -1262,7 +1509,7 @@ def generate_url_types_evolution_per_year(cursor):
 try:
     connection = psycopg2.connect(**params)
     cursor = connection.cursor()
-    
+
     generate_active_inactive_urls_combined(cursor)
     generate_active_inactive_urls_stacked_bar_chart_with_counts(cursor)
     generate_urls_section_stacked_bar_chart_with_counts(cursor)
@@ -1271,15 +1518,10 @@ try:
     generate_network_error_distribution_horizontal_bar_chart(cursor)
     export_all_failed_domains_to_file(cursor)
     generate_url_types_evolution_per_year(cursor)
-    
-    
-    # BACKUP
-    # generate_active_urls_per_conference_stacked_bar_chart(cursor)
-    # generate_success_rate_per_protocol(cursor)
-    # generate_success_percentage_per_tld(cursor)
-    # plot_url_counts_vs_broken_urls(cursor)
-    # print("Half-life:", calculate_half_life(cursor))
-    # visualize_top_failed_domains_from_csv('results/all_failed_domains_stats.csv', top_n=20)
+    calculate_half_life(cursor)
+    calculate_half_life_by_url_type(cursor)
+    generate_active_percentage_per_content_category(cursor)
+    generate_doi_usage_per_year(cursor)
     visualize_top_active_domains_from_csv('results/all_failed_domains_stats.csv', top_n=10)
     visualize_bottom_active_domains_from_csv('results/all_failed_domains_stats.csv', bottom_n=10)
 
@@ -1288,4 +1530,5 @@ except (Exception, psycopg2.DatabaseError) as error:
 finally:
     if connection is not None:
         connection.close()
+
 
