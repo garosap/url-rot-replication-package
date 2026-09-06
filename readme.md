@@ -325,3 +325,27 @@ Model 1 also includes a **VIF (Variance Inflation Factor)** diagnostic to check 
    ```
 3. All results are printed to the console.
 
+### Regression Robustness Analysis
+
+The `regression-analysis/robustness_regression.py` script re-estimates Model 1 under a sequence of increasingly permissive standard-error specifications to verify that the significance of findings does not depend on classical OLS assumptions (independence, homoscedasticity, normality).
+
+| Specification | Description |
+|---|---|
+| **Classical OLS** | Non-robust SEs — sanity check against the main results table |
+| **HC3** | Heteroskedasticity-robust SEs |
+| **Clustered by paper** | SEs clustered at the paper level |
+| **Clustered by domain** | SEs clustered by registered domain (via tldextract) |
+| **Two-way clustered** | SEs clustered by both paper and domain simultaneously |
+| **Logistic + AMEs** | Logistic regression with paper-clustered SEs; average marginal effects reported on the probability scale for direct comparison with Model 1 coefficients |
+| **B-spline logistic** | Logistic regression with B-spline terms for `url_length` and `paper_age`; checks sensitivity to the linear functional-form assumption |
+
+The script also prints a summary comparison table of p-values across all five OLS specifications and a side-by-side LPM vs. logistic-AME table.
+
+#### Instructions
+1. Navigate to the `regression-analysis` directory.
+2. Run:
+   ```bash
+   python3 robustness_regression.py
+   ```
+3. All results are printed to the console.
+
